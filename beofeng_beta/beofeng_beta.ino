@@ -3,11 +3,23 @@
 //Set the address of the RDA chip
 const byte RADIO_ADDR = 0b0101110;//One option is 46. The other is 113 
 
+const int CONT2_PIN = 5;
+const int CONT1_PIN = 6;
+const int MODE_PIN = 7;
+const int SEN_PIN = 8;
+
 
 void setup() {
   
   //Setup for debugging serial communication.
   Serial.begin(9600);
+
+  //set control pins to outputs
+  pinMode(CONT1_PIN,OUTPUT);
+  pinMode(CONT2_PIN,OUTPUT);
+
+  //set MODE,SEN pins to output
+  pinMode(MODE_PIN,OUTPUT);
   
   //Join as Master.
   Wire.begin();
@@ -21,7 +33,7 @@ void loop() {
 //  delay(1);
 
 
-  int addr = pollI2cAddr();
+  //int addr = pollI2cAddr();
   Serial.print("Address is: ");
   Serial.println(addr);
   delay(100*1000);
@@ -183,5 +195,32 @@ int pollI2cAddr(){
   }
   return retAddr;
 
+}
+
+void setControl(boolean normalOperation){
+  if(normalOperation){
+    digitalWrite(CONT1_PIN,HIGH);
+    digitalWrite(CONT2_PIN,LOW);
+  }else{
+    digitalWrite(CONT1_PIN,LOW);
+    digitalWrite(CONT2_PIN,HIGH):
+  }
+}
+
+void setMode(boolean modeLow){
+  if(modeLow){
+    digitalWrite(MODE_PIN,LOW);
+  }else{
+    digitalWrite(MODE_PIN,HIGH);
+  }
+}
+
+void setSen(boolean senLow){
+  if(senLow){
+    pinMode(SEN_PIN,OUTPUT);
+    digitalWrite(SEN_PIN,LOW);
+  }else{
+    pinMode(SEN_PIN,INPUT);
+  }
 }
 
