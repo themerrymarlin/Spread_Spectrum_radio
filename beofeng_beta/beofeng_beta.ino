@@ -7,6 +7,9 @@ const int CONT2_PIN = 5;
 const int CONT1_PIN = 6;
 const int MODE_PIN = 7;
 const int SEN_PIN = 8;
+const boolean NORMAL_OP = true;
+const boolean MODE_LOW = true;
+const boolean SEN_LOW = true;
 
 
 void setup() {
@@ -38,7 +41,11 @@ void loop() {
   Serial.println(addr);
   delay(100*1000);
 
-
+  //change to i2c operation
+  setControl(!NORMAL_OP);
+  setMode(MODE_LOW);
+  setSen(SEN_LOW);
+  
 // Change the frequency in increments of one
    float freq = 409.75;
 //   for(int i=0; i < 100; i++){
@@ -52,7 +59,12 @@ void loop() {
 //      delay(1000);     
 //      freq = freq + 0.5;
 //   }
-  
+
+  //change to normal operation
+  setControl(NORMAL_OP);
+  setMode(!MODE_LOW);
+  setSen(!SEN_LOW);
+  delay(100*1000);
 }
 
 int* longToBitArr(long l){
