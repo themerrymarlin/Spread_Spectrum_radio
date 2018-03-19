@@ -125,7 +125,6 @@ void changeFreq(float frequency){
   
 } //changeFrequency
 
-
 //Set the register of a i2c device at a specific register_address with specific 8bit address
 // The data is split into two bytes, register_data_high => 16:8, register_data_low => 7:0
 void setRegister(byte i2c_address, byte register_address, byte register_data_high, byte register_data_low) {
