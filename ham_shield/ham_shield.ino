@@ -11,6 +11,8 @@ HamShield radio;
 
 uint32_t freq;
 
+bool is_tx;
+
 void setup() {
   // put your setup code here, to run once:
   pinMode(PWM_PIN,OUTPUT);
@@ -19,9 +21,30 @@ void setup() {
   pinMode(SWITCH_PIN,INPUT_PULLUP);
 
   Serial.begin(9600);
+  Serial.println("press button to begin...");
 
+  //begin on button press, essentially an on switch
   while(digitalRead(SWITCH_PIN));
 
+  digitalWrite(RESET_PIN,HIGH);
+
+  //test connection
+  Serial.println(radio.testConnection() ? "RDA radio connection successful" : "RDA radio connection failed");
+
+  //initialize
+  radio.initialize(); //UHF 12.5kHz
+  radio.dangerMode(); //default config
+
+  radio.setSQOff();
+  freq = 430000;
+  radio.frequency(freq);
+
+  radio.setModeReceive();
+  is_tx = false;
+
+  radio.setRfPower(0);
+
+  pinMode(LED_PIN,OUTPUT);
   
 }
 
