@@ -34,6 +34,8 @@ bool currently_tx;
 
 uint32_t freq;
 
+bool isTransmitter=true;
+
 unsigned long rssi_timeout;
 
 void setup() {
@@ -97,7 +99,7 @@ void setup() {
   
   
   */  
-  radio.setRfPower(0);
+  radio.setRfPower(8);
     
   // configure Arduino LED for
   pinMode(LED_PIN, OUTPUT);
@@ -106,9 +108,6 @@ void setup() {
   radio.setVolume2(0x8);
 
 }
-
-
-
 
 
 /* 
@@ -131,7 +130,8 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
     if(timeout == 0) { timer = 4294967295; }                                      // If we want to wait forever, set it to the max millis()    
     Serial.println( "waitForAciviity:: Going waiting for signal");
     while(timer > millis()) {                                                     // while our timer is not timed out.
-        rssi = radio.readRSSI();                                                        // Read signal strength
+        rssi = radio.readRSSI();   // Read signal strength
+        //Serial.println(rssi);
         if ( rssi > activityRSSI ){
           Serial.println("waitForActivity:: ActivityDetected on the channel");
           timer = millis()+activitywindow;
@@ -147,11 +147,14 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
           int FUDGE_FACTOR_FOR_ENDING_COMMUNICATION=100;
           while( millis()-timer < FUDGE_FACTOR_FOR_ENDING_COMMUNICATION ){
             rssi = radio.readRSSI();
+            Serial.println(rssi);
             if ( rssi <= emptyRSSI ){
               Serial.println("waitForActivity:: Activity ended within predetermined window");
+              
               return true;
             }
           }
+          Serial.println(millis()-timer);
           Serial.println("waitForActivity:: Activity did not end within the predetermined window");
           return false; // Timeout, we started activity but the activity is longer than our defined channel useage
         }
@@ -173,14 +176,31 @@ void loop() {
       Serial.println("Tx");
       //radio.setTxSourceMic();
       //radio.setRfPower(1);
+
+      if (isTransmitter==true){
+        tone(PWM_PIN, 6000, 1000);
+        delay(1000);
+      }
       
-      //tone(PWM_PIN, 6000, 1000);
-      //delay(1000);
     }
   } else if (currently_tx) {
     radio.setModeReceive();
     currently_tx = false;
     Serial.println("Rx");
+    if(isTransmitter==true){
+      Serial.println("Waiting For ACK Activity");
+        if (waitForActivity(0,500, -75)){
+          //delay(500);
+          if(waitForActivity(0,500, -75)){
+            Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
+          } else {
+            Serial.println("failed second pulse");
+          }
+        }
+        else{
+          Serial.println("failed first pulse");
+        }
+    }
   }
 
  /* if( cur_freq == 435000 ){
@@ -194,10 +214,31 @@ void loop() {
   Serial.println(cur_freq);
   delay(500);
 ` */
-  
+
   //Serial.println(radio.readRSSI());
-  Serial.println("Waiting For Activity");
-  Serial.println(waitForActivity(0,1000, -75));
+  
+  if ( isTransmitter==false){
+    Serial.println("Waiting For ACK Activity");
+    boolean temp=waitForActivity(0,1000, -75);
+    Serial.println(temp);
+    if (temp==1){
+      Serial.println("transmitting ack");
+      currently_tx = true;
+      radio.setModeTransmit();
+      tone(PWM_PIN,6000,500);
+      delay(500);
+      radio.setModeReceive();
+      Serial.println("creating silence period");
+      delay(500);
+      radio.setModeTransmit();
+      Serial.println("transmitting second pulse");
+      tone(PWM_PIN,6000,500);
+      delay(500);
+    }
+  }
+  
+  
+  
   //delay(100);
   
 }
