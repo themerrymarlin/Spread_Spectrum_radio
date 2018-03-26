@@ -29,6 +29,11 @@ HamShield radio;
 #define RESET_PIN A3
 #define SWITCH_PIN 2
 
+const uint32_t HOP_FREQ_LOWER = 430000;
+const uint32_t HOP_FREQ_UPPER = 435000;
+const uint32_t HOP_FREQ_INCREMENT = 500;
+const int HOP_FREQ_WAIT_TIME_MS = 500;
+
 bool blinkState = false;
 bool currently_tx;
 
@@ -162,6 +167,30 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
     return false;                                                                  // Timed out
 }
 
+/*  hopFreq 
+ *   
+ *  -Performs frequency hopping routine
+ * 
+ */
+
+void hopFreq(){
+  uint32_t cur_freq = radio.getFrequency();
+  if (cur_freq != HOP_FREQ_LOWER) {
+      Serial.println("hopFreq:: Current frequency is expected to be the lower bound of the hopping scheme. Setting to that value now");
+      radio.frequency(HOP_FREQ_LOWER);
+      cur_freq = HOP_FREQ_LOWER;
+  }
+  while ( cur_freq <= HOP_FREQ_UPPER ){
+    cur_freq = cur_freq + HOP_FREQ_INCREMENT;  
+    radio.frequency(cur_freq);
+    Serial.print("Frequency: ");
+    Serial.println(cur_freq);
+    delay(HOP_FREQ_WAIT_TIME_MS);
+  }
+  //Return to the lower frequency
+  radio.frequency(HOP_FREQ_LOWER);
+}
+
 
 void loop() {  
   //Switch between transmit and recieve depending on transmit button
@@ -193,6 +222,13 @@ void loop() {
           //delay(500);
           if(waitForActivity(0,500, -75)){
             Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
+            //We want to move into transmit for the duration of the frequency hopping.
+            radio.setModeTransmit();
+            currently_tx=true;
+            hopFreq();
+            //We want to return to rx.
+            radio.setModeRecieve();
+            currently_tx=false;
           } else {
             Serial.println("failed second pulse");
           }
@@ -202,19 +238,6 @@ void loop() {
         }
     }
   }
-
- /* if( cur_freq == 435000 ){
-    cur_freq = 430000;
-  }else{
-    cur_freq = cur_freq + 500;  
-  }
-  
-  radio.frequency(cur_freq);
-  Serial.print("Frequency: ");
-  Serial.println(cur_freq);
-  delay(500);
-` */
-
   //Serial.println(radio.readRSSI());
   
   if ( isTransmitter==false){
@@ -234,11 +257,12 @@ void loop() {
       Serial.println("transmitting second pulse");
       tone(PWM_PIN,6000,500);
       delay(500);
+      radio.setModeReceive();
+      //Assuming we are going into the frequency hopping.
+      hopFreq();
     }
   }
-  
-  
-  
+ 
   //delay(100);
   
 }
