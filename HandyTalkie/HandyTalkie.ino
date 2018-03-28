@@ -32,7 +32,7 @@ HamShield radio;
 const uint32_t HOP_FREQ_LOWER = 430000;
 const uint32_t HOP_FREQ_UPPER = 435000;
 const uint32_t HOP_FREQ_INCREMENT = 500;
-const int HOP_FREQ_WAIT_TIME_MS = 500;
+const int HOP_FREQ_WAIT_TIME_MS = 1000;
 
 bool blinkState = false;
 bool currently_tx;
@@ -112,6 +112,10 @@ void setup() {
   radio.setVolume1(0x8);
   radio.setVolume2(0x8);
 
+  if ( isTransmitter )
+    Serial.println("RADIO IS TRANSMITTER");
+  else
+    Serial.println("RADIO IS RECIEVER");
 }
 
 
@@ -150,14 +154,17 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
           }
           Serial.println("waitForActivity:: End of activity window checking that channel is dead");
           int FUDGE_FACTOR_FOR_ENDING_COMMUNICATION=100;
-          while( millis()-timer < FUDGE_FACTOR_FOR_ENDING_COMMUNICATION ){
+          long diff_time = millis()-timer;
+          while( diff_time < FUDGE_FACTOR_FOR_ENDING_COMMUNICATION ){
             rssi = radio.readRSSI();
             Serial.println(rssi);
             if ( rssi <= emptyRSSI ){
               Serial.println("waitForActivity:: Activity ended within predetermined window");
-              
+              Serial.print("waitForActivity:: FudgedFudgeFactor =~ ");
+              Serial.println( diff_time );
               return true;
             }
+            diff_time = millis()-timer;
           }
           Serial.println(millis()-timer);
           Serial.println("waitForActivity:: Activity did not end within the predetermined window");
@@ -180,17 +187,19 @@ void hopFreq(){
       radio.frequency(HOP_FREQ_LOWER);
       cur_freq = HOP_FREQ_LOWER;
   }
-  while ( cur_freq <= HOP_FREQ_UPPER ){
+  while ( cur_freq < HOP_FREQ_UPPER ){
     cur_freq = cur_freq + HOP_FREQ_INCREMENT;  
     radio.frequency(cur_freq);
-    Serial.print("Frequency: ");
+    Serial.print("hopFreq:: Frequency: ");
     Serial.println(cur_freq);
     delay(HOP_FREQ_WAIT_TIME_MS);
   }
   //Return to the lower frequency
+  Serial.println("hopFreq:: Finished Hopping returning to lower bound");
   radio.frequency(HOP_FREQ_LOWER);
 }
 
+long debug_timer;
 
 void loop() {  
   //Switch between transmit and recieve depending on transmit button
@@ -207,18 +216,29 @@ void loop() {
       //radio.setRfPower(1);
 
       if (isTransmitter==true){
+        Serial.println("Transmitting Tone for initial Sync");
         tone(PWM_PIN, 6000, 1000);
         delay(1000);
+//        debug_timer=millis();
       }
       
     }
   } else if (currently_tx) {
     radio.setModeReceive();
+    debug_timer=millis();
     currently_tx = false;
     Serial.println("Rx");
+
+    
     if(isTransmitter==true){
       Serial.println("Waiting For ACK Activity");
         if (waitForActivity(0,500, -75)){
+          
+          long debug_difference = millis()-debug_timer-500; //Subtract 500 since it is the time needed for one half second pulse.
+          Serial.print("Difference between pulses = ");
+          Serial.println(debug_difference);
+          Serial.print("Difference divided by 2 = ");
+          Serial.println(debug_difference/2);
           //delay(500);
           if(waitForActivity(0,500, -75)){
             Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
@@ -227,7 +247,7 @@ void loop() {
             currently_tx=true;
             hopFreq();
             //We want to return to rx.
-            radio.setModeRecieve();
+            radio.setModeReceive();
             currently_tx=false;
           } else {
             Serial.println("failed second pulse");
@@ -258,6 +278,7 @@ void loop() {
       tone(PWM_PIN,6000,500);
       delay(500);
       radio.setModeReceive();
+      delay(46);//make reciever wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
       //Assuming we are going into the frequency hopping.
       hopFreq();
     }
