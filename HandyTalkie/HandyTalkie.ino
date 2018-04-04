@@ -34,12 +34,19 @@ const uint32_t HOP_FREQ_UPPER = 435000;
 const uint32_t HOP_FREQ_INCREMENT = 500;
 const int HOP_FREQ_WAIT_TIME_MS = 1000;
 
+const int RADIO_ACTIVE_RSSI = -75;
+const int RADIO_EMPTY_RSSI = -100;
+
 bool blinkState = false;
-bool currently_tx;
+
+bool currently_tx = false;
+bool isTransmitter=false;
+bool isInTransmission=false;
+bool justBeganTransmission = false;
+
+long latency = 0;
 
 uint32_t freq;
-
-bool isTransmitter=true;
 
 unsigned long rssi_timeout;
 
@@ -58,9 +65,8 @@ void setup() {
   
   // initialize serial communication
   Serial.begin(9600);
-  Serial.println("press the switch to begin...");
-  
-  while (digitalRead(SWITCH_PIN));
+//  Serial.println("press the switch to begin...");  
+//  while (digitalRead(SWITCH_PIN));
   
   // let the AU ot of reset
   digitalWrite(RESET_PIN, HIGH);
@@ -82,7 +88,7 @@ void setup() {
   Serial.println("changing frequency");
   
   radio.setSQOn();
-  radio.setSQHiThresh(-50);
+  radio.setSQHiThresh(-75);
   radio.setSQLoThresh(-90);
   freq = 435000;
   radio.frequency(freq);
@@ -109,14 +115,12 @@ void setup() {
   // configure Arduino LED for
   pinMode(LED_PIN, OUTPUT);
   rssi_timeout = 0;
-  radio.setVolume1(0x8);
-  radio.setVolume2(0x8);
+  radio.setVolume1(0xA);
+  radio.setVolume2(0xA);
 
-  if ( isTransmitter )
-    Serial.println("RADIO IS TRANSMITTER");
-  else
-    Serial.println("RADIO IS RECIEVER");
-}
+  attachInterrupt(digitalPinToInterrupt(SWITCH_PIN), switch_isr, FALLING);
+  
+} //setup
 
 
 /* 
@@ -135,15 +139,19 @@ void setup() {
 bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI = -75, int emptyRSSI = HAMSHIELD_EMPTY_CHANNEL_RSSI) { 
     int16_t rssi = 0;                                                              // Set RSSI to max received signal
     for(int x = 0; x < 20; x++) { rssi = radio.readRSSI(); }                       // "warm up" to get past RSSI hysteresis     
+    Serial.println( "waitForAciviity:: Going waiting for signal");
     long timer = millis() + timeout;                                              // Setup the timeout value
     if(timeout == 0) { timer = 4294967295; }                                      // If we want to wait forever, set it to the max millis()    
-    Serial.println( "waitForAciviity:: Going waiting for signal");
     while(timer > millis()) {                                                     // while our timer is not timed out.
         rssi = radio.readRSSI();   // Read signal strength
+        if ( justBeganTransmission == true ){
+          //We are beginning a transmission and are the transmitter. Exit so we can begin sync routine.
+          return false;
+        }
         //Serial.println(rssi);
         if ( rssi > activityRSSI ){
-          Serial.println("waitForActivity:: ActivityDetected on the channel");
           timer = millis()+activitywindow;
+          Serial.println("waitForActivity:: ActivityDetected on the channel");
           while(timer > millis()){
             rssi = radio.readRSSI();
             //if the channel goes dead
@@ -155,18 +163,20 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
           Serial.println("waitForActivity:: End of activity window checking that channel is dead");
           int FUDGE_FACTOR_FOR_ENDING_COMMUNICATION=100;
           long diff_time = millis()-timer;
+          
           while( diff_time < FUDGE_FACTOR_FOR_ENDING_COMMUNICATION ){
             rssi = radio.readRSSI();
-            Serial.println(rssi);
+            //Serial.println(rssi);
             if ( rssi <= emptyRSSI ){
               Serial.println("waitForActivity:: Activity ended within predetermined window");
-              Serial.print("waitForActivity:: FudgedFudgeFactor =~ ");
-              Serial.println( diff_time );
+              //Serial.print("waitForActivity:: FudgedFudgeFactor =~ ");
+              //Serial.println( diff_time );
+              latency = diff_time;
               return true;
             }
             diff_time = millis()-timer;
           }
-          Serial.println(millis()-timer);
+          //Serial.println(millis()-timer);
           Serial.println("waitForActivity:: Activity did not end within the predetermined window");
           return false; // Timeout, we started activity but the activity is longer than our defined channel useage
         }
@@ -181,6 +191,7 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
  */
 
 void hopFreq(){
+            
   uint32_t cur_freq = radio.getFrequency();
   if (cur_freq != HOP_FREQ_LOWER) {
       Serial.println("hopFreq:: Current frequency is expected to be the lower bound of the hopping scheme. Setting to that value now");
@@ -201,86 +212,113 @@ void hopFreq(){
 
 long debug_timer;
 
-void loop() {  
-  //Switch between transmit and recieve depending on transmit button
-  if (!digitalRead(SWITCH_PIN))
-  {
-    if (!currently_tx) 
-    {
+void switch_isr (){
+
+  //isTransmitter=!isTransmitter;
+  Serial.print("switch_isr:: isTransmitter=");
+  Serial.println(isTransmitter); 
+  // We need to sync before anyone can transmit.
+  if ( isInTransmission == false ){
+    isInTransmission = true;
+    justBeganTransmission = true;
+  } 
+} //switch_isr
+
+bool syncRadio(){  
+  if (!currently_tx) 
+   {
       currently_tx = true;
+      //We are now in a transmission.
+      isInTransmission = true;
       
-      // set to transmit
+      ////// TRANSMIT INITIAL TONE /////
       radio.setModeTransmit();
       Serial.println("Tx");
-      //radio.setTxSourceMic();
-      //radio.setRfPower(1);
-
-      if (isTransmitter==true){
-        Serial.println("Transmitting Tone for initial Sync");
-        tone(PWM_PIN, 6000, 1000);
-        delay(1000);
+      Serial.println("Transmitting Tone for initial Sync");
+      tone(PWM_PIN, 6000, 1000);
+      delay(1000);
 //        debug_timer=millis();
-      }
-      
-    }
-  } else if (currently_tx) {
-    radio.setModeReceive();
-    debug_timer=millis();
-    currently_tx = false;
-    Serial.println("Rx");
 
-    
-    if(isTransmitter==true){
+      ////// RECIEVE ACKNOWLEDGE FROM RECEIVER /////
+      radio.setModeReceive();
+      debug_timer=millis();
+      currently_tx = false;
+      Serial.println("Rx");
       Serial.println("Waiting For ACK Activity");
-        if (waitForActivity(0,500, -75)){
+      // Waiting for Initial Recieve
+      if (waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
           
           long debug_difference = millis()-debug_timer-500; //Subtract 500 since it is the time needed for one half second pulse.
           Serial.print("Difference between pulses = ");
           Serial.println(debug_difference);
           Serial.print("Difference divided by 2 = ");
           Serial.println(debug_difference/2);
-          //delay(500);
-          if(waitForActivity(0,500, -75)){
+
+          //Waiting for Second Recieve From Raduio
+          if(waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
             Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
             //We want to move into transmit for the duration of the frequency hopping.
-            radio.setModeTransmit();
-            currently_tx=true;
-            hopFreq();
-            //We want to return to rx.
-            radio.setModeReceive();
-            currently_tx=false;
+            return true;
           } else {
             Serial.println("failed second pulse");
+            return false;
           }
         }
         else{
           Serial.println("failed first pulse");
+          return false;
         }
-    }
+    } else if (currently_tx) {
+      Serial.println("SyncRadio:: WARNING: Why are we currently transmitting and trying to sync???");
+      return false;
   }
-  //Serial.println(radio.readRSSI());
   
-  if ( isTransmitter==false){
-    Serial.println("Waiting For ACK Activity");
-    boolean temp=waitForActivity(0,1000, -75);
-    Serial.println(temp);
-    if (temp==1){
+} //syncRadio
+
+void loop() {  
+  justBeganTransmission = false;
+  
+  if (isInTransmission==true){
+    bool isSyncSuccess = syncRadio();
+    if ( isSyncSuccess ){
+      radio.setModeTransmit();
+      currently_tx=true;
+      hopFreq();
+      isInTransmission = false;
+      radio.setModeReceive();
+      currently_tx=false;
+    }
+  }else{
+    
+    Serial.println("Waiting For ACK Activity"); 
+    
+    if ( waitForActivity(0,1000, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI) ){
+      //We are now in a Transmission since we're syncing.
+      isInTransmission = true; 
+      
       Serial.println("transmitting ack");
       currently_tx = true;
       radio.setModeTransmit();
       tone(PWM_PIN,6000,500);
       delay(500);
       radio.setModeReceive();
+      currently_tx = false;
       Serial.println("creating silence period");
       delay(500);
       radio.setModeTransmit();
+      currently_tx = true;
       Serial.println("transmitting second pulse");
       tone(PWM_PIN,6000,500);
       delay(500);
       radio.setModeReceive();
-      delay(46);//make reciever wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
+      currently_tx = false;
+      delay(latency);//make receiver wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
       //Assuming we are going into the frequency hopping.
       hopFreq();
+      //We are done with transmision and we can have interrupts again
+      isInTransmission = false;
+    } else { 
+      Serial.println("LOOP:: Something went wrong....");
     }
   }
  
