@@ -255,13 +255,6 @@ bool syncRadio(){
       Serial.println("Waiting For ACK Activity");
       // Waiting for Initial Recieve
       if (waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
-          
-          long debug_difference = millis()-debug_timer-500; //Subtract 500 since it is the time needed for one half second pulse.
-          Serial.print("Difference between pulses = ");
-          Serial.println(debug_difference);
-          Serial.print("Difference divided by 2 = ");
-          Serial.println(debug_difference/2);
-
           //Waiting for Second Recieve From Raduio
           if(waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
             Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
@@ -326,6 +319,7 @@ void loop() {
       //We are done with transmision and we can have interrupts again
       isInTransmission = false;
     } else { 
+      isInTransmission = false; //reset and continue with wait
       Serial.println("Stopping activity wait");
     }
   }
