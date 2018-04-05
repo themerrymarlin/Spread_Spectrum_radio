@@ -200,7 +200,7 @@ void hopFreq(){
   }
   
   while ( isInTransmission ){
-    if(cur_freq = HOP_FREQ_UPPER){
+    if(cur_freq == HOP_FREQ_UPPER){
       cur_freq = HOP_FREQ_LOWER);      
     }else{
       cur_freq = cur_freq + HOP_FREQ_INCREMENT;
@@ -286,9 +286,8 @@ bool syncRadio(){
 void loop() {  
   justBeganTransmission = false;
   
-  if (isInTransmission==true){
-    bool isSyncSuccess = syncRadio();
-    if ( isSyncSuccess ){
+  if (isInTransmission){
+    if ( syncRadio() ){
       radio.setModeTransmit();
       isTransmitter = true;
       currently_tx=true;
