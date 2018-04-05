@@ -201,7 +201,7 @@ void hopFreq(){
   
   while ( isInTransmission ){
     if(cur_freq == HOP_FREQ_UPPER){
-      cur_freq = HOP_FREQ_LOWER);      
+      cur_freq = HOP_FREQ_LOWER;      
     }else{
       cur_freq = cur_freq + HOP_FREQ_INCREMENT;
     }  
@@ -280,19 +280,17 @@ bool syncRadio(){
   
 } //syncRadio
 
-void loop() {  
+void loop() {
   justBeganTransmission = false;
   
-  if (isInTransmission){
-    if ( syncRadio() ){
-      radio.setModeTransmit();
-      isTransmitter = true;
-      currently_tx=true;
-      hopFreq();
-      radio.setModeReceive();
-      currently_tx=false;
-    }
-  }else{
+  if (isInTransmission && syncRadio()){
+    radio.setModeTransmit();
+    isTransmitter = true;
+    currently_tx=true;
+    hopFreq();
+    radio.setModeReceive();
+    currently_tx=false;
+  }else if (!isInTransmission){
     
     Serial.println("Waiting For ACK Activity"); 
     
