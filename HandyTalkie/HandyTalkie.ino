@@ -232,6 +232,24 @@ void switch_isr (){
   }
 } //switch_isr
 
+bool waitForPulses(){
+      if (waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
+          //Waiting for Second Recieve From Raduio
+          if(waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
+            Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
+            //We want to move into transmit for the duration of the frequency hopping.
+            return true;
+          } else {
+            Serial.println("failed second pulse");
+            return false;
+          }
+        }
+        else{
+          Serial.println("failed first pulse");
+          return false;
+        }
+} //waitForPulses()
+
 bool syncRadio(){  
   if (!currently_tx) 
    {
@@ -253,22 +271,8 @@ bool syncRadio(){
       currently_tx = false;
       Serial.println("Rx");
       Serial.println("Waiting For ACK Activity");
-      // Waiting for Initial Recieve
-      if (waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
-          //Waiting for Second Recieve From Raduio
-          if(waitForActivity(0,500, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI)){
-            Serial.println("RECIEVED ACKNOWLEDGE!!!"); 
-            //We want to move into transmit for the duration of the frequency hopping.
-            return true;
-          } else {
-            Serial.println("failed second pulse");
-            return false;
-          }
-        }
-        else{
-          Serial.println("failed first pulse");
-          return false;
-        }
+      // Waiting for Receive pulses
+      return waitForPulses();
     } else if (currently_tx) {
       Serial.println("SyncRadio:: WARNING: Why are we currently transmitting and trying to sync???");
       return false;
