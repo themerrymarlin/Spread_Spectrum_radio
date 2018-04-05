@@ -198,16 +198,22 @@ void hopFreq(){
       radio.frequency(HOP_FREQ_LOWER);
       cur_freq = HOP_FREQ_LOWER;
   }
-  while ( cur_freq < HOP_FREQ_UPPER ){
-    cur_freq = cur_freq + HOP_FREQ_INCREMENT;  
+  
+  while ( isInTransmission ){
+    if(cur_freq = HOP_FREQ_UPPER){
+      cur_freq = HOP_FREQ_LOWER);      
+    }else{
+      cur_freq = cur_freq + HOP_FREQ_INCREMENT;
+    }  
     radio.frequency(cur_freq);
     Serial.print("hopFreq:: Frequency: ");
     Serial.println(cur_freq);
     delay(HOP_FREQ_WAIT_TIME_MS);
+    //need to add activity check if not transmitter
+    if(!isTransmitter){
+      //TODO check if channel is dead, probably for two cycles?
+    }
   }
-  //Return to the lower frequency
-  Serial.println("hopFreq:: Finished Hopping returning to lower bound");
-  radio.frequency(HOP_FREQ_LOWER);
 }
 
 long debug_timer;
@@ -221,7 +227,9 @@ void switch_isr (){
   if ( isInTransmission == false ){
     isInTransmission = true;
     justBeganTransmission = true;
-  } 
+  } else{
+    isInTransmission = false;
+  }
 } //switch_isr
 
 bool syncRadio(){  
@@ -282,9 +290,9 @@ void loop() {
     bool isSyncSuccess = syncRadio();
     if ( isSyncSuccess ){
       radio.setModeTransmit();
+      isTransmitter = true;
       currently_tx=true;
       hopFreq();
-      isInTransmission = false;
       radio.setModeReceive();
       currently_tx=false;
     }
@@ -314,11 +322,12 @@ void loop() {
       currently_tx = false;
       delay(latency);//make receiver wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
       //Assuming we are going into the frequency hopping.
+      isTransmitter = false;
       hopFreq();
       //We are done with transmision and we can have interrupts again
       isInTransmission = false;
     } else { 
-      Serial.println("LOOP:: Something went wrong....");
+      Serial.println("Stopping activity wait");
     }
   }
  
