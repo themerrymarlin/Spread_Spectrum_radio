@@ -280,21 +280,7 @@ bool syncRadio(){
   
 } //syncRadio
 
-void loop() {
-  justBeganTransmission = false;
-  
-  if (isInTransmission && syncRadio()){
-    radio.setModeTransmit();
-    isTransmitter = true;
-    currently_tx=true;
-    hopFreq();
-    radio.setModeReceive();
-    currently_tx=false;
-  }else if (!isInTransmission){
-    
-    Serial.println("Waiting For ACK Activity"); 
-    
-    if ( waitForActivity(0,1000, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI) ){
+void syncAndRecieve(){
       //We are now in a Transmission since we're syncing.
       isInTransmission = true; 
       
@@ -320,6 +306,24 @@ void loop() {
       hopFreq();
       //We are done with transmision and we can have interrupts again
       isInTransmission = false;
+}
+
+void loop() {
+  justBeganTransmission = false;
+  
+  if (isInTransmission && syncRadio()){
+    radio.setModeTransmit();
+    isTransmitter = true;
+    currently_tx=true;
+    hopFreq();
+    radio.setModeReceive();
+    currently_tx=false;
+  }else if (!isInTransmission){
+    
+    Serial.println("Waiting For ACK Activity"); 
+    
+    if ( waitForActivity(0,1000, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI) ){
+      syncAndRecieve();
     } else { 
       isInTransmission = false; //reset and continue with wait
       Serial.println("Stopping activity wait");
