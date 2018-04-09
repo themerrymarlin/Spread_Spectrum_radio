@@ -100,16 +100,6 @@ void setup() {
   Serial.print("config register is: ");
   Serial.println(radio.readCtlReg());
   Serial.println(radio.readRSSI());
-
-  /*
-    // set to transmit
-    radio.setModeTransmit();
-    // maybe set PA bias voltage
-    Serial.println("configured for transmit");
-    radio.setTxSourceMic();
-
-
-  */
   radio.setRfPower(8);
 
   // configure Arduino LED for
@@ -149,7 +139,7 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
   while (timer > millis()) {                                                    // while our timer is not timed out.
     rssi = radio.readRSSI();   // Read signal strength
     //Serial.println(rssi);
-    if ( justBeganTransmission == true ) {
+    if ( justBeganTransmission ) {
       //We are beginning a transmission and are the transmitter. Exit so we can begin sync routine.
       return false;
     }
@@ -235,22 +225,20 @@ void switch_isr() {
   Serial.print("switch_isr:: isInTransmission=");
   Serial.println(isInTransmission);
   // We need to sync before anyone can transmit.
-  if ( isInTransmission == false ) {
+  if ( !isInTransmission ) {
     isInTransmission = true;
     justBeganTransmission = true;
   } else {
     isInTransmission = false;
-
-    //DEBUG
-    Serial.println("switch_isr:: DEBUG LINE");
-    Serial.println(currently_tx);
-    Serial.println(isTransmitter);
-    Serial.println(isInTransmission);
-    Serial.println(justBeganTransmission);
-    Serial.println("switch_isr:: END DEBUG");
-
-
   }
+
+  //DEBUG
+  Serial.println("switch_isr:: DEBUG LINE");
+  Serial.println(currently_tx);
+  Serial.println(isTransmitter);
+  Serial.println(isInTransmission);
+  Serial.println(justBeganTransmission);
+  Serial.println("switch_isr:: END DEBUG");
 
   last_interrupt_time = interrupt_time;
 
@@ -279,7 +267,6 @@ bool syncRadio() {
   {
     currently_tx = true;
     //We are now in a transmission.
-    isInTransmission = true;
 
     ////// TRANSMIT INITIAL TONE /////
     radio.setModeTransmit();
