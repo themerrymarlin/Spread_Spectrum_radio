@@ -317,12 +317,15 @@ void sendSyncACK(int radio_ack_length_ms, int radio_ack_silence_ms){
     setRadioToReceive();
 }
 
+void sendSyncREQ(int radio_req_length_ms){
     if (isRadioInTxMode){
        Serial.println("sendSyncREQ:: WARNING: We are already in Transmit, our timing will be off");
     }
     //Make sure we are in transmit mode.
     setRadioToTransmit();
     Serial.println("Transmitting Tone for initial Sync");
+    tone(PWM_PIN, 6000, radio_req_length_ms);
+    delay(radio_req_length_ms);
     //Switch to Reciver Mode.
      setRadioToReceive();
 }
@@ -332,6 +335,7 @@ bool syncRadio() {
   if (!isRadioInTxMode())
   {
     ////// TRANSMIT INITIAL TONE /////
+    sendSyncREQ(RADIO_REQ_LENGTH_MS);
     ////// RECIEVE ACKNOWLEDGE FROM RECEIVER /////
     Serial.println("Waiting For ACK Activity");
     // Waiting for Receive pulses
@@ -348,6 +352,7 @@ void syncAndRecieve() {
   //We are now in a Transmission since we're syncing.
   isInTransmission = true;
   Serial.println("transmitting ack");
+  sendSyncACK(RADIO_ACK_LENGTH_MS, RADIO_ACK_SILENCE_MS); //Send the acknowledge to the transmitting radio.
   delay(latency);//make receiver wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
   //Assuming we are going into the frequency hopping.
   isTransmitter = false;
