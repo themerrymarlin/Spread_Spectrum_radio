@@ -119,30 +119,149 @@ void setup() {
 
 } //setup
 
-/*
-    Sets the radio into transmit mode, and sets the appropriate flags.
+void loop() {
+  justBeganTransmission = false;
+
+  if (isInTransmission && syncRadio()) {
+    setRadioToTransmit();
+    isTransmitter = true;
+    hopFreq();
+    setRadioToReceive();
+  } else if (!isInTransmission) {
+
+    Serial.println("Waiting For ACK Activity");
+
+    if ( waitForSyncREQ(RADIO_REQ_TIMEOUT_MS, RADIO_REQ_LENGTH_MS, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI) ) {
+      syncAndRecieve();
+    } else {
+      //isInTransmission = false; //reset and continue with wait
+      Serial.println("LOOP:: Stopping activity wait");
+    }
+  }
+} //loop
+
+/*  hopFreq
+
+    -Performs frequency hopping routine
+
 */
-void setRadioToTransmit(){
-    radio.setModeTransmit();
-    is_radio_in_tx_mode = true;
-    Serial.println("TX");
+void hopFreq() {
+
+  uint32_t cur_freq = radio.getFrequency();
+  if (cur_freq != HOP_FREQ_LOWER) {
+    Serial.println("hopFreq:: Current frequency is expected to be the lower bound of the hopping scheme. Setting to that value now");
+    radio.frequency(HOP_FREQ_LOWER);
+    cur_freq = HOP_FREQ_LOWER;
+  }
+
+  while ( isInTransmission ) {
+    if (cur_freq == HOP_FREQ_UPPER) {
+      cur_freq = HOP_FREQ_LOWER;
+    } else {
+      cur_freq = cur_freq + HOP_FREQ_INCREMENT;
+    }
+    radio.frequency(cur_freq);
+    Serial.print("hopFreq:: Frequency: ");
+    Serial.println(cur_freq);
+    delay(HOP_FREQ_WAIT_TIME_MS);
+    //need to add activity check if not transmitter
+    if (!isTransmitter) {
+      //TODO check if channel is dead, probably for two cycles?
+    }
+  }
+  //Reset our radio to the lower hopping frequnecy.
+  radio.frequency(HOP_FREQ_LOWER);
 }
-/*
-    Sets the radio into receive mode, and set the appropriate flags.
-*/
-void setRadioToReceive(){
-    radio.setModeReceive();
-    is_radio_in_tx_mode = false;
-    Serial.println("Rx");
+
+void sendSyncACK(int radio_ack_length_ms, int radio_ack_silence_ms){
+    if (isRadioInTxMode){
+       Serial.println("sendSyncACK:: WARNING: We are already in Transmit, our timing will be off");
+    }
+    setRadioToTransmit();
+    tone(PWM_PIN, 6000, radio_ack_length_ms);
+    delay(radio_ack_length_ms);
+    setRadioToReceive();
+    Serial.println("creating silence period");
+    delay(radio_ack_silence_ms);
+    setRadioToTransmit();
+    Serial.println("transmitting second pulse");
+    tone(PWM_PIN, 6000, radio_ack_length_ms);
+    delay(radio_ack_length_ms);
+    setRadioToReceive();
 }
-/*
-    Returns whether we are currently in transmit mode or not.
-    If true - we are in transmit mode.
-    if false - we are in receiver mode.
-*/
-bool isRadioInTxMode(){
-    return is_radio_in_tx_mode;
+
+void sendSyncREQ(int radio_req_length_ms){
+    if (isRadioInTxMode){
+       Serial.println("sendSyncREQ:: WARNING: We are already in Transmit, our timing will be off");
+    }
+    //Make sure we are in transmit mode.
+    setRadioToTransmit();
+    Serial.println("Transmitting Tone for initial Sync");
+    tone(PWM_PIN, 6000, radio_req_length_ms);
+    delay(radio_req_length_ms);
+    //Switch to Reciver Mode.
+     setRadioToReceive();
 }
+
+
+void switch_isr() {
+
+  long interrupt_time = millis();
+  if ( interrupt_time - last_switch_isr_time < 200 ) {
+    Serial.println("switch_isr:: Ignoring Switch Press");
+    return;
+  }
+
+  Serial.print("switch_isr:: isInTransmission=");
+  Serial.println(isInTransmission);
+  // We need to sync before anyone can transmit.
+  if ( !isInTransmission ) {
+    isInTransmission = true;
+    justBeganTransmission = true;
+  } else {
+    isInTransmission = false;
+  }
+
+  //DEBUG
+  Serial.println("switch_isr:: DEBUG LINE");
+  Serial.println(isTransmitter);
+  Serial.println(isInTransmission);
+  Serial.println(justBeganTransmission);
+  Serial.println("switch_isr:: END DEBUG");
+
+  last_switch_isr_time = interrupt_time;
+
+} //switch_isr
+void syncAndRecieve() {
+  //We are now in a Transmission since we're syncing.
+  isInTransmission = true;
+  Serial.println("transmitting ack");
+  sendSyncACK(RADIO_ACK_LENGTH_MS, RADIO_ACK_SILENCE_MS); //Send the acknowledge to the transmitting radio.
+  delay(latency);//make receiver wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
+  //Assuming we are going into the frequency hopping.
+  isTransmitter = false;
+  hopFreq();
+  //We are done with transmision and we can have interrupts again
+  isInTransmission = false;
+}
+
+
+bool syncRadio() {
+  if (!isRadioInTxMode())
+  {
+    ////// TRANSMIT INITIAL TONE /////
+    sendSyncREQ(RADIO_REQ_LENGTH_MS);
+    ////// RECIEVE ACKNOWLEDGE FROM RECEIVER /////
+    Serial.println("Waiting For ACK Activity");
+    // Waiting for Receive pulses
+    return waitForSyncACK(RADIO_ACK_TIMEOUT_MS, RADIO_ACK_LENGTH_MS, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI);
+    
+  } else if (isRadioInTxMode) {
+    Serial.println("SyncRadio:: WARNING: Why are we currently transmitting and trying to sync???");
+    return false;
+  }
+
+} //syncRadio
 
 
 /*
@@ -210,68 +329,6 @@ bool waitForActivity(long timeout = 0, long activitywindow = 0, int activityRSSI
   return false;                                                                  // Timed out
 }
 
-/*  hopFreq
-
-    -Performs frequency hopping routine
-
-*/
-void hopFreq() {
-
-  uint32_t cur_freq = radio.getFrequency();
-  if (cur_freq != HOP_FREQ_LOWER) {
-    Serial.println("hopFreq:: Current frequency is expected to be the lower bound of the hopping scheme. Setting to that value now");
-    radio.frequency(HOP_FREQ_LOWER);
-    cur_freq = HOP_FREQ_LOWER;
-  }
-
-  while ( isInTransmission ) {
-    if (cur_freq == HOP_FREQ_UPPER) {
-      cur_freq = HOP_FREQ_LOWER;
-    } else {
-      cur_freq = cur_freq + HOP_FREQ_INCREMENT;
-    }
-    radio.frequency(cur_freq);
-    Serial.print("hopFreq:: Frequency: ");
-    Serial.println(cur_freq);
-    delay(HOP_FREQ_WAIT_TIME_MS);
-    //need to add activity check if not transmitter
-    if (!isTransmitter) {
-      //TODO check if channel is dead, probably for two cycles?
-    }
-  }
-  //Reset our radio to the lower hopping frequnecy.
-  radio.frequency(HOP_FREQ_LOWER);
-}
-
-void switch_isr() {
-
-  long interrupt_time = millis();
-  if ( interrupt_time - last_switch_isr_time < 200 ) {
-    Serial.println("switch_isr:: Ignoring Switch Press");
-    return;
-  }
-
-  Serial.print("switch_isr:: isInTransmission=");
-  Serial.println(isInTransmission);
-  // We need to sync before anyone can transmit.
-  if ( !isInTransmission ) {
-    isInTransmission = true;
-    justBeganTransmission = true;
-  } else {
-    isInTransmission = false;
-  }
-
-  //DEBUG
-  Serial.println("switch_isr:: DEBUG LINE");
-  Serial.println(isTransmitter);
-  Serial.println(isInTransmission);
-  Serial.println(justBeganTransmission);
-  Serial.println("switch_isr:: END DEBUG");
-
-  last_switch_isr_time = interrupt_time;
-
-} //switch_isr
-
 bool waitForSyncACK(int radio_ack_timeout_ms, int radio_ack_length_ms, int radio_active_rssi, int radio_empty_rssi) {
   if (waitForActivity(radio_ack_timeout_ms, radio_ack_length_ms, radio_active_rssi, radio_empty_rssi)) {
     //Waiting for Second Recieve From Raduio
@@ -300,90 +357,27 @@ bool waitForSyncREQ(int radio_req_timeout_ms, int radio_req_length_ms, int radio
     }
 }
 
-void sendSyncACK(int radio_ack_length_ms, int radio_ack_silence_ms){
-    if (isRadioInTxMode){
-       Serial.println("sendSyncACK:: WARNING: We are already in Transmit, our timing will be off");
-    }
-    setRadioToTransmit();
-    tone(PWM_PIN, 6000, radio_ack_length_ms);
-    delay(radio_ack_length_ms);
-    setRadioToReceive();
-    Serial.println("creating silence period");
-    delay(radio_ack_silence_ms);
-    setRadioToTransmit();
-    Serial.println("transmitting second pulse");
-    tone(PWM_PIN, 6000, radio_ack_length_ms);
-    delay(radio_ack_length_ms);
-    setRadioToReceive();
+/*
+    Sets the radio into transmit mode, and sets the appropriate flags.
+*/
+void setRadioToTransmit(){
+    radio.setModeTransmit();
+    is_radio_in_tx_mode = true;
+    Serial.println("TX");
 }
-
-void sendSyncREQ(int radio_req_length_ms){
-    if (isRadioInTxMode){
-       Serial.println("sendSyncREQ:: WARNING: We are already in Transmit, our timing will be off");
-    }
-    //Make sure we are in transmit mode.
-    setRadioToTransmit();
-    Serial.println("Transmitting Tone for initial Sync");
-    tone(PWM_PIN, 6000, radio_req_length_ms);
-    delay(radio_req_length_ms);
-    //Switch to Reciver Mode.
-     setRadioToReceive();
+/*
+    Sets the radio into receive mode, and set the appropriate flags.
+*/
+void setRadioToReceive(){
+    radio.setModeReceive();
+    is_radio_in_tx_mode = false;
+    Serial.println("Rx");
 }
-
-
-bool syncRadio() {
-  if (!isRadioInTxMode())
-  {
-    ////// TRANSMIT INITIAL TONE /////
-    sendSyncREQ(RADIO_REQ_LENGTH_MS);
-    ////// RECIEVE ACKNOWLEDGE FROM RECEIVER /////
-    Serial.println("Waiting For ACK Activity");
-    // Waiting for Receive pulses
-    return waitForSyncACK(RADIO_ACK_TIMEOUT_MS, RADIO_ACK_LENGTH_MS, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI);
-    
-  } else if (isRadioInTxMode) {
-    Serial.println("SyncRadio:: WARNING: Why are we currently transmitting and trying to sync???");
-    return false;
-  }
-
-} //syncRadio
-
-void syncAndRecieve() {
-  //We are now in a Transmission since we're syncing.
-  isInTransmission = true;
-  Serial.println("transmitting ack");
-  sendSyncACK(RADIO_ACK_LENGTH_MS, RADIO_ACK_SILENCE_MS); //Send the acknowledge to the transmitting radio.
-  delay(latency);//make receiver wait roughly the time for the other radio. Based upon experiments. Could change with distance, power, etc.
-  //Assuming we are going into the frequency hopping.
-  isTransmitter = false;
-  hopFreq();
-  //We are done with transmision and we can have interrupts again
-  isInTransmission = false;
+/*
+    Returns whether we are currently in transmit mode or not.
+    If true - we are in transmit mode.
+    if false - we are in receiver mode.
+*/
+bool isRadioInTxMode(){
+    return is_radio_in_tx_mode;
 }
-
-void loop() {
-  justBeganTransmission = false;
-
-  if (isInTransmission && syncRadio()) {
-    setRadioToTransmit();
-    isTransmitter = true;
-    hopFreq();
-    setRadioToReceive();
-  } else if (!isInTransmission) {
-
-    Serial.println("Waiting For ACK Activity");
-
-    if ( waitForSyncREQ(RADIO_REQ_TIMEOUT_MS, RADIO_REQ_LENGTH_MS, RADIO_ACTIVE_RSSI, RADIO_EMPTY_RSSI) ) {
-      syncAndRecieve();
-    } else {
-      //isInTransmission = false; //reset and continue with wait
-      Serial.println("LOOP:: Stopping activity wait");
-    }
-  }
-
-  //delay(100);
-
-}
-
-
-
